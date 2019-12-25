@@ -65,16 +65,27 @@ impl Build {
         let build_dir = out_dir.join("build");
         let install_dir = out_dir.join("install");
 
+        // Removing and copying to folders with long paths can fail on Windows if the paths
+        // are not `canonicalize`d beforehand. However a lot of things (such as `nmake`) do not
+        // support them, so we only use them when calling specific Rust functions,
+        // and fall back to normal paths if `canonicalize` failed.
+
         if build_dir.exists() {
-            fs::remove_dir_all(&build_dir).unwrap();
+            let canon_build_dir = build_dir.canonicalize().unwrap_or_else(|_| build_dir.to_path_buf());
+            fs::remove_dir_all(&canon_build_dir).unwrap();
         }
         if install_dir.exists() {
-            fs::remove_dir_all(&install_dir).unwrap();
+            let canon_install_dir = install_dir.canonicalize().unwrap_or_else(|_| install_dir.to_path_buf());
+            fs::remove_dir_all(&canon_install_dir).unwrap();
         }
 
         let inner_dir = build_dir.join("src");
         fs::create_dir_all(&inner_dir).unwrap();
-        cp_r(&source_dir(), &inner_dir);
+
+        let canon_source = source_dir().canonicalize().unwrap_or_else(|_| source_dir().to_path_buf());
+        let canon_inner_dir = inner_dir.canonicalize().unwrap_or_else(|_| inner_dir.to_path_buf());
+
+        cp_r(&canon_source, &canon_inner_dir);
         apply_patches(target, &inner_dir);
 
         let perl_program =
@@ -356,7 +367,7 @@ impl Build {
             vec!["ssl".to_string(), "crypto".to_string()]
         };
 
-        fs::remove_dir_all(&inner_dir).unwrap();
+        fs::remove_dir_all(&canon_inner_dir).unwrap();
 
         Artifacts {
             lib_dir: install_dir.join("lib"),
