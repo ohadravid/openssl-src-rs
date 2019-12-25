@@ -66,15 +66,15 @@ impl Build {
         let install_dir = out_dir.join("install");
 
         if build_dir.exists() {
-            fs::remove_dir_all(&build_dir).unwrap();
+            fs::remove_dir_all(&build_dir.canonicalize().unwrap()).unwrap();
         }
         if install_dir.exists() {
-            fs::remove_dir_all(&install_dir).unwrap();
+            fs::remove_dir_all(&install_dir.canonicalize().unwrap()).unwrap();
         }
 
         let inner_dir = build_dir.join("src");
         fs::create_dir_all(&inner_dir).unwrap();
-        cp_r(&source_dir(), &inner_dir);
+        cp_r(&source_dir().canonicalize().unwrap(), &inner_dir.canonicalize().unwrap());
         apply_patches(target, &inner_dir);
 
         let mut configure = Command::new("perl");
@@ -289,7 +289,7 @@ impl Build {
                 // As of OpenSSL 1.1.1 the source apparently wants to include
                 // `stdatomic.h`, but this doesn't exist on Emscripten. After
                 // reading OpenSSL's source where the error is, we define this
-                // magical (and probably
+                // magical (and probably4
                 // compiler-internal-should-not-be-user-defined) macro to say
                 // "no atomics are available" and avoid including such a header.
                 configure.arg("-D__STDC_NO_ATOMICS__");
@@ -303,13 +303,26 @@ impl Build {
 
         // And finally, run the perl configure script!
         configure.current_dir(&inner_dir);
+
         self.run_command(configure, "configuring OpenSSL build");
 
         // On MSVC we use `nmake.exe` with a slightly different invocation, so
         // have that take a different path than the standard `make` below.
         if target.contains("msvc") {
-            let mut build =
-                cc::windows_registry::find(target, "nmake.exe").expect("failed to find nmake");
+            let mut build = if let Some(vcvars_path) = env::var_os("OPENSSL_SRC_RS_VCVARS_PATH") {
+                let vcvars_path = Path::new(&vcvars_path);
+
+                let mut build = Command::new("cmd.exe");
+                build.arg("/c")
+                    .arg("call").arg(&vcvars_path)
+                    .arg("&&")
+                    .arg("nmake.exe");
+
+                build
+            } else {
+                cc::windows_registry::find(target, "nmake.exe").expect("failed to find nmake")
+            };
+
             build.arg("build_libs").current_dir(&inner_dir);
             self.run_command(build, "building OpenSSL");
 
@@ -349,7 +362,7 @@ impl Build {
             vec!["ssl".to_string(), "crypto".to_string()]
         };
 
-        fs::remove_dir_all(&inner_dir).unwrap();
+        fs::remove_dir_all(&inner_dir.canonicalize().unwrap()).unwrap();
 
         Artifacts {
             lib_dir: install_dir.join("lib"),
