@@ -119,6 +119,10 @@ impl Build {
             // just pessimistically assume for now that's not available.
             configure.arg("no-asm");
 
+            // For XP support.
+            configure
+                .arg("-D_WIN32_WINNT=0x0501");
+
             let features = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or(String::new());
             if features.contains("crt-static") {
                 configure.arg("no-shared");
