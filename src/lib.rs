@@ -326,8 +326,20 @@ impl Build {
         // On MSVC we use `nmake.exe` with a slightly different invocation, so
         // have that take a different path than the standard `make` below.
         if target.contains("msvc") {
-            let mut build =
-                cc::windows_registry::find(target, "nmake.exe").expect("failed to find nmake");
+            let mut build = if let Some(vcvars_path) = env::var_os("OPENSSL_SRC_VCVARS") {
+                let vcvars_path = Path::new(&vcvars_path);
+
+                let mut build = Command::new("cmd.exe");
+                build.arg("/c")
+                    .arg("call").arg(&vcvars_path)
+                    .arg("&&")
+                    .arg("nmake.exe");
+
+                build
+            } else {
+                cc::windows_registry::find(target, "nmake.exe").expect("failed to find nmake")
+            };
+
             build.arg("build_libs").current_dir(&inner_dir);
             self.run_command(build, "building OpenSSL");
 
